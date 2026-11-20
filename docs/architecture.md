@@ -8,7 +8,7 @@ this repository's README describes what actually exists.
 | Package | Responsibility now |
 | --- | --- |
 | `core` | Settings, identity, conversation service, session and audit contracts |
-| `actions` | Pure policy evaluator; audited gateway, scoped grants, read-only workspace adapter |
+| `actions` | Pure policy evaluator; audited gateway, scoped grants, workspace reads, attachment runtime |
 | `api` | Explicit workspace CLI command wiring |
 | `memory` | SQLite migrations, sessions, atomic exchanges, backups, audit storage |
 | `inference` | Mock and local Ollama adapters, readiness checks, history translation |
@@ -23,8 +23,10 @@ configuration utilities. Framework adapters depend on core contracts.
 
 The gateway dispatches `demo.echo`, `workspace.read`, and `workspace.list`. A trusted
 caller supplies grants bound to actor, session UUID, capability, and exact resource.
-The workspace CLI creates a grant for one explicitly requested operation. Chat has
-no tools. No model-facing grant creation, arbitrary callable dispatch, shell tools,
+The workspace CLI creates a grant for one explicitly requested operation. Chat's
+attachment wrapper grants only caller-selected reads per turn, then supplies typed
+documents to Ollama as untrusted reference text. Model-selected tools remain disabled.
+No model-facing grant creation, arbitrary callable dispatch, shell tools,
 or network tools are exposed.
 
 The gateway requires an `AuditSink`; use `SQLiteStore` for durable records and

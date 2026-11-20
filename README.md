@@ -10,8 +10,9 @@ permissions, and future memory/learning policies; model providers are adapters.
 This repository includes the foundation, **local conversation persistence**, and
 an **Ollama adapter for real local conversations**. The default profile still uses
 Pydantic AI's offline `TestModel`; real inference requires the explicit Ollama
-profile below. Explicit read-only workspace commands are available; chat does not
-yet use tools. Environment collection and autonomous learning are not enabled.
+profile below. Explicit read-only workspace commands and audited file attachments
+for chat are available. Model-selected tools, environment collection, and autonomous
+learning are not enabled.
 This is not yet the full v0.1 companion.
 
 Included:
@@ -104,9 +105,35 @@ absolute paths, symlinks/reparse points, and hardlinked file reads are rejected.
 Use a trusted folder without concurrent hostile filesystem changes: this is not
 a race-proof OS sandbox. Source files are never modified; audit metadata is
 written to the configured database, without file contents. Invalid roots fail
-before an audit operation starts. Chat has no filesystem permission, and the
+before an audit operation starts. Models have no filesystem permission, and the
 disabled autonomous-action settings remain unchanged.
 See [workspace boundaries](docs/decisions/0004-read-only-workspace.md).
+
+## Ask about selected files
+
+Chat can now receive explicitly attached files through the audited read gateway:
+
+```powershell
+.\scripts\uv.ps1 run elara --config config/elara.ollama.example.toml chat --workspace sandbox --attach hello.txt "What does this file say?"
+# Omit the message for interactive chat; add --save to retain the conversation.
+```
+
+Repeat `--attach` for up to eight relative paths. Both flags are required, and
+only the local Ollama profile accepts attachments. Files are reread on each turn;
+the selection lasts only for this CLI invocation and must be supplied again when
+resuming a session. The model cannot select other paths. This uses ordinary text
+inference and does not require native model tool calling.
+
+All workspace restrictions above still apply. Attachment text is limited to
+16,000 characters in total and counts toward the configured conversation input
+budget. Read, audit, or size failures stop the turn before inference. Audit events
+record reads, not successful delivery to the model. Use the printed Action audit
+ID with `sessions audit`, including for unsaved chats.
+
+File contents reach the local Ollama daemon as untrusted reference data. They are
+not directly saved in the transcript or audit, but a saved answer may quote them.
+Previous answers remain in conversation history even if the attachments change.
+Only your selected files are read; prompt text cannot authorize more access.
 
 ## Save and resume a conversation
 
@@ -128,7 +155,7 @@ location. All commands must use the same configuration to see the same sessions.
 Saved turns are replayed into the runtime after restarting. Each successful
 exchange is atomic; failed generation saves no partial exchange, and stale writes
 are rejected. Saving history does not yet provide semantic memory or learning.
-`sessions audit SESSION_ID` displays action metadata (chat currently has no tools).
+`sessions audit SESSION_ID` displays action metadata, including chat attachment reads.
 `database init` explicitly initializes the schema without starting a chat.
 
 Exports and backups refuse to overwrite existing files. Session deletion removes
@@ -149,7 +176,7 @@ Python 3.12.16, the dependencies, and `uv.lock` are now available. An offline
 
 Local synchronous tests cover database operations, rollback, audit enforcement,
 redaction, provider configuration, metadata checks, and workspace boundaries:
-**105 tests passed, 1 skipped**. The host blocks real hardlink creation; simulated
+**113 tests passed, 1 skipped**. The host blocks real hardlink creation; simulated
 link-count rejection passed. Actual Windows junction coverage remains pending.
 Ruff, mypy, `elara doctor`, and
 wheel/source-distribution builds passed. The wheel includes its identity and SQL

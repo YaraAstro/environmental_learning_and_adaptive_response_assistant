@@ -12,4 +12,4 @@ allow_silent_cloud_fallback = false
 max_steps_per_request = 1
 max_output_tokens = 1024
 max_context_characters = 24000
-request_timeout_seconds = 120
+request_timeout_seconds = 300

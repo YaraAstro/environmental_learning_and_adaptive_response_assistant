@@ -15,10 +15,16 @@ class ConversationTurn(Contract):
     content: str
 
 
+class AttachedDocument(Contract):
+    path: str
+    content: str
+
+
 class AgentRequest(Contract):
     message: str = Field(min_length=1, max_length=32_000)
     session_id: UUID = Field(default_factory=uuid4)
     history: tuple[ConversationTurn, ...] = ()
+    attachments: tuple[AttachedDocument, ...] = ()
 
 
 class AgentResponse(Contract):

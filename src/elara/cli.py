@@ -120,6 +120,14 @@ def main(argv: list[str] | None = None) -> int:
     settings_command.add_subparsers(dest="settings_command", required=True).add_parser("show")
     chat = commands.add_parser("chat", help="Chat using the explicitly configured provider")
     chat.add_argument("message", nargs="?", help="One-shot message; omit for an interactive loop")
+    chat.add_argument("--workspace", type=Path, help="Trusted root for explicitly attached files")
+    chat.add_argument(
+        "--attach",
+        action="append",
+        default=[],
+        metavar="RELATIVE_PATH",
+        help="Read this file into each chat turn; repeat for up to eight files",
+    )
     persistence = chat.add_mutually_exclusive_group()
     persistence.add_argument("--save", action="store_true", help="Save a new local conversation")
     persistence.add_argument("--session", type=UUID, help="Resume an existing saved conversation")
@@ -180,6 +188,11 @@ def main(argv: list[str] | None = None) -> int:
                 return 0
         from elara.app import build_runtime
 
+        if args.command == "chat" and (args.workspace is not None or args.attach):
+            if args.workspace is None or not args.attach:
+                raise InferenceError("Use --workspace FOLDER together with --attach RELATIVE_PATH.")
+            if settings.inference.provider != "ollama":
+                raise InferenceError("File attachments require the explicit local Ollama profile.")
         runtime = build_runtime(settings)
         if args.command == "provider":
             result = asyncio.run(
@@ -189,6 +202,12 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{label}: {result.message}")
             return 0
         session_id = uuid4()
+        if args.attach:
+            from elara.actions.attachments import AttachmentRuntime
+
+            runtime = AttachmentRuntime(
+                runtime, args.workspace, tuple(args.attach), SQLiteStore(database_path(settings))
+            )
         conversation: ConversationService | None = None
         temporary_history: list[ConversationTurn] = []
         if args.save or args.session:
@@ -202,6 +221,12 @@ def main(argv: list[str] | None = None) -> int:
                 session_id = store.create_session().id
             conversation = ConversationService(runtime, store)
             print(f"Saved session: {session_id}")
+        if args.attach:
+            print(f"Action audit ID: {session_id}")
+            print(
+                "Selected files are reread each turn and sent to local Ollama. "
+                "Replies may quote their contents."
+            )
 
         async def respond(message: str) -> None:
             if conversation is not None:
