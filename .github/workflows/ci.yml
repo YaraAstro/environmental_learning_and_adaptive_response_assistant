@@ -1,0 +1,33 @@
+name: checks
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  foundation:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: '3.12'
+          enable-cache: true
+      - name: Install locked dependencies
+        if: hashFiles('uv.lock') != ''
+        run: uv sync --locked --all-extras
+      - name: Resolve initial dependencies (until bootstrap creates uv.lock)
+        if: hashFiles('uv.lock') == ''
+        run: uv sync --all-extras
+      - run: uv run ruff check .
+      - run: uv run mypy
+      - run: uv run pytest -q
+      - run: uv run elara doctor
+      - run: uv build

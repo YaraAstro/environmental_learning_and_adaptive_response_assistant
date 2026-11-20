@@ -1,0 +1,26 @@
+# Implemented v0.0 settings. Unknown/unsupported options fail validation.
+# Copy to config/elara.toml and pass --config or set ELARA_CONFIG_PATH.
+# Relative directories are resolved against this configuration file.
+data_dir = "../.data"
+sandbox_dir = "../sandbox"
+
+[inference]
+provider = "mock"
+cloud_data_policy = "never"
+allow_silent_cloud_fallback = false
+max_steps_per_request = 8
+
+[actions]
+default = "deny"
+filesystem_read_enabled = false
+filesystem_write_enabled = false
+shell_execution_enabled = false
+network_actions_enabled = false
+
+[privacy]
+environment_collection_enabled = false
+telemetry_opt_in = false
+
+[learning]
+enabled = false
+allow_self_edit_security_controls = false

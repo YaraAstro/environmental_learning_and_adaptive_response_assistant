@@ -1,0 +1,33 @@
+# Python and developer tools
+__pycache__/
+*.py[cod]
+.venv/
+.tools/
+.uv-cache/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+build/
+dist/
+.coverage
+htmlcov/
+
+# Secrets and private application data
+.env
+.env.*
+!.env.example
+config/elara.toml
+.data/
+*.sqlite*
+*.db
+*.db-*
+*.log
+evals/reports/*
+!evals/reports/.gitkeep
+
+# Editors / OS
+.idea/
+.vscode/
+Thumbs.db
+.DS_Store
