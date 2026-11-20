@@ -77,7 +77,7 @@ def test_migrations_are_idempotent_and_reject_future_schema(tmp_path: Path) -> N
     SQLiteStore(path)
     SQLiteStore(path)
     with connect(path) as connection:
-        assert connection.execute("SELECT count(*) FROM schema_migrations").fetchone()[0] == 1
+        assert connection.execute("SELECT count(*) FROM schema_migrations").fetchone()[0] == 2
         assert connection.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
         connection.execute("PRAGMA user_version = 999")
     with pytest.raises(SchemaError):

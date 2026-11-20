@@ -8,7 +8,8 @@ from datetime import UTC, datetime
 from importlib.resources import files
 from pathlib import Path
 
-SCHEMA_VERSION = 1
+MIGRATIONS = ("001_sessions.sql", "002_memories.sql")
+SCHEMA_VERSION = len(MIGRATIONS)
 
 
 class SchemaError(ValueError):
@@ -53,12 +54,14 @@ def transaction(connection: sqlite3.Connection) -> Iterator[None]:
 
 def migrate(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    sql = files("elara.memory.migrations").joinpath("001_sessions.sql").read_text("utf-8")
-    digest = hashlib.sha256(sql.encode()).hexdigest()
+    migrations = [
+        files("elara.memory.migrations").joinpath(name).read_text("utf-8") for name in MIGRATIONS
+    ]
+    checksums = [hashlib.sha256(sql.encode()).hexdigest() for sql in migrations]
     with connect(path) as connection:
         with transaction(connection):
             version = int(connection.execute("PRAGMA user_version").fetchone()[0])
-            if version not in (0, SCHEMA_VERSION):
+            if not 0 <= version <= SCHEMA_VERSION:
                 raise SchemaError("Unsupported schema version; restore a compatible backup")
             if version == 0:
                 existing = connection.execute(
@@ -71,19 +74,22 @@ def migrate(path: Path) -> None:
                     "CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, "
                     "checksum TEXT NOT NULL, applied_at TEXT NOT NULL)"
                 )
-                for statement in statements(sql):
-                    connection.execute(statement)
-                connection.execute(
-                    "INSERT INTO schema_migrations VALUES (?, ?, ?)",
-                    (SCHEMA_VERSION, digest, datetime.now(UTC).isoformat()),
-                )
-                connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
             else:
                 rows = connection.execute(
                     "SELECT version, checksum FROM schema_migrations ORDER BY version"
                 ).fetchall()
-                if [(row[0], row[1]) for row in rows] != [(SCHEMA_VERSION, digest)]:
+                if [(row[0], row[1]) for row in rows] != list(
+                    enumerate(checksums[:version], start=1)
+                ):
                     raise SchemaError("Migration history does not match this application")
+            for index in range(version, SCHEMA_VERSION):
+                for statement in statements(migrations[index]):
+                    connection.execute(statement)
+                connection.execute(
+                    "INSERT INTO schema_migrations VALUES (?, ?, ?)",
+                    (index + 1, checksums[index], datetime.now(UTC).isoformat()),
+                )
+                connection.execute(f"PRAGMA user_version = {index + 1}")
         connection.execute("PRAGMA journal_mode = WAL")
 
 

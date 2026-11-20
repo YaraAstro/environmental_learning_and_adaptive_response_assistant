@@ -15,6 +15,17 @@ for chat are available. Model-selected tools, environment collection, and autono
 learning are not enabled.
 This is not yet the full v0.1 companion.
 
+For everyday local chat, start Ollama and run:
+
+```powershell
+.\scripts\chat.ps1 --save
+```
+
+This shortcut uses `config/elara.ollama.example.toml` and your installed
+`lfm3-omni:2b`. It starts an interactive conversation; `--save` retains its history.
+Without `--save`, the conversation is temporary. Explicit memories are separate
+and persist across both saved and temporary chats.
+
 Included:
 
 - Python 3.12 package and `elara` CLI entry point.
@@ -135,6 +146,45 @@ not directly saved in the transcript or audit, but a saved answer may quote them
 Previous answers remain in conversation history even if the attachments change.
 Only your selected files are read; prompt text cannot authorize more access.
 
+## Remember facts across chats
+
+Inside interactive chat, use these commands (no model request is needed):
+
+```text
+/remember name=Sizushu
+/remember project=I am building ELARA as a local personal assistant.
+/memories
+/forget project
+/help
+```
+
+Then ask a normal question such as `What do you know about me?`. Facts are read
+afresh on each local Ollama turn, including new sessions after a restart. Use the
+same key to replace a fact. The limit is 20 facts of 500 characters each; keys
+start with a lowercase letter and contain up to 48 lowercase letters, digits,
+underscores, or hyphens. This is explicit user memory, not autonomous learning or
+semantic retrieval. Typing “remember this” in ordinary prose does not save a fact.
+
+Use `chat --no-memory` (or `.\scripts\chat.ps1 --no-memory`) to disable recall for
+that run. Memory management commands still work; previously quoted facts in chat
+history remain visible. For a conversation without that history, start a new chat.
+Mock chat does not use memory. Neither model output nor attachments can write it.
+
+Memory can also be managed without starting chat:
+
+```powershell
+.\scripts\uv.ps1 run elara --config config/elara.ollama.example.toml memory set name "Sizushu"
+.\scripts\uv.ps1 run elara --config config/elara.ollama.example.toml memory list
+.\scripts\uv.ps1 run elara --config config/elara.ollama.example.toml memory forget name
+```
+
+Memory is stored in the same local database as sessions and shared by chats using
+that database. Common credentials are redacted, but this is not a secret vault.
+Saved facts reach the local model as reference data and count toward the context
+limit. Deleting a fact stops future recall; it does not erase previous answers,
+exports, or backups. Deleting a conversation does not delete its separate memories.
+The database upgrades existing v1 sessions to schema v2 in one transaction.
+
 ## Save and resume a conversation
 
 Use the example configuration to keep development data in the ignored `.data`
@@ -176,7 +226,7 @@ Python 3.12.16, the dependencies, and `uv.lock` are now available. An offline
 
 Local synchronous tests cover database operations, rollback, audit enforcement,
 redaction, provider configuration, metadata checks, and workspace boundaries:
-**113 tests passed, 1 skipped**. The host blocks real hardlink creation; simulated
+**124 tests passed, 1 skipped**. The host blocks real hardlink creation; simulated
 link-count rejection passed. Actual Windows junction coverage remains pending.
 Ruff, mypy, `elara doctor`, and
 wheel/source-distribution builds passed. The wheel includes its identity and SQL
@@ -186,9 +236,9 @@ The restricted execution session blocks the loopback
 socket pair that Windows asyncio needs to create an event loop. Async/runtime and
 chat tests therefore still require an unrestricted Windows host or Windows/Linux
 CI. Those tests remain enabled; this limitation is not hidden by skips in CI.
-The user's saved mock-chat command was confirmed working in their own PowerShell.
-The Ollama API is unreachable from this session, so a real local response has not
-been verified here. Run the `provider smoke` command above after installing the model.
+The user confirmed both saved mock chat and a real `lfm3-omni:2b` attachment
+response in their own PowerShell. The Ollama API remains unreachable from this
+execution session. The new memory-to-model path still needs a live host check.
 
 To reproduce the subset that does not require an event loop:
 

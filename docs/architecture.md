@@ -9,8 +9,8 @@ this repository's README describes what actually exists.
 | --- | --- |
 | `core` | Settings, identity, conversation service, session and audit contracts |
 | `actions` | Pure policy evaluator; audited gateway, scoped grants, workspace reads, attachment runtime |
-| `api` | Explicit workspace CLI command wiring |
-| `memory` | SQLite migrations, sessions, atomic exchanges, backups, audit storage |
+| `api` | Explicit workspace and memory CLI command wiring |
+| `memory` | SQLite migrations, sessions, explicit facts and recall, backups, audit storage |
 | `inference` | Mock and local Ollama adapters, readiness checks, history translation |
 | `observability` | Best-effort credential redaction before persistence |
 | `app.py` | Dependency composition |

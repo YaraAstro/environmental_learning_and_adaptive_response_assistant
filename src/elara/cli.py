@@ -121,6 +121,7 @@ def main(argv: list[str] | None = None) -> int:
     chat = commands.add_parser("chat", help="Chat using the explicitly configured provider")
     chat.add_argument("message", nargs="?", help="One-shot message; omit for an interactive loop")
     chat.add_argument("--workspace", type=Path, help="Trusted root for explicitly attached files")
+    chat.add_argument("--no-memory", action="store_true", help="Do not recall saved facts this run")
     chat.add_argument(
         "--attach",
         action="append",
@@ -131,6 +132,14 @@ def main(argv: list[str] | None = None) -> int:
     persistence = chat.add_mutually_exclusive_group()
     persistence.add_argument("--save", action="store_true", help="Save a new local conversation")
     persistence.add_argument("--session", type=UUID, help="Resume an existing saved conversation")
+    memory = commands.add_parser("memory", help="Manage facts explicitly remembered across chats")
+    memory_commands = memory.add_subparsers(dest="memory_command", required=True)
+    memory_commands.add_parser("list")
+    remember = memory_commands.add_parser("set")
+    remember.add_argument("key")
+    remember.add_argument("value")
+    forget = memory_commands.add_parser("forget")
+    forget.add_argument("key")
     sessions = commands.add_parser("sessions", help="Manage saved local conversations")
     session_commands = sessions.add_subparsers(dest="session_command", required=True)
     session_commands.add_parser("list")
@@ -147,6 +156,16 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         settings = load_settings(args.config)
+        if args.command == "memory":
+            from elara.api.memory_cli import memory_command
+
+            memory_command(
+                database_path(settings),
+                args.memory_command,
+                getattr(args, "key", ""),
+                getattr(args, "value", ""),
+            )
+            return 0
         if args.command == "workspace":
             from elara.api.workspace_cli import run_workspace
 
@@ -202,6 +221,10 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{label}: {result.message}")
             return 0
         session_id = uuid4()
+        if not args.no_memory and settings.inference.provider == "ollama":
+            from elara.memory.runtime import MemoryRuntime
+
+            runtime = MemoryRuntime(runtime, database_path(settings))
         if args.attach:
             from elara.actions.attachments import AttachmentRuntime
 
@@ -255,13 +278,27 @@ def main(argv: list[str] | None = None) -> int:
                 if settings.inference.provider == "mock"
                 else (f"local Ollama / {settings.inference.model}")
             )
-            print(f"ELARA {mode}. {retention} Type /exit to quit.")
+            recall = "off" if args.no_memory or settings.inference.provider == "mock" else "on"
+            print(f"ELARA {mode}. {retention} Memory recall: {recall}. Type /help for commands.")
             while True:
                 message = input("You: ").strip()
                 if message in {"/exit", "/quit"}:
                     break
                 if message:
-                    asyncio.run(respond(message))
+                    from elara.api.memory_cli import interactive_command
+
+                    try:
+                        if not interactive_command(message, database_path(settings)):
+                            asyncio.run(respond(message))
+                    except InferenceError as exc:
+                        print(f"ELARA: {exc}", file=sys.stderr)
+                    except (ValueError, OSError, sqlite3.Error):
+                        print(
+                            "ELARA: command failed. Check the file/configuration or memory input "
+                            "(lowercase key, 1-500 characters per value, 20 facts maximum). "
+                            "Type /help.",
+                            file=sys.stderr,
+                        )
         return 0
     except SessionNotFound:
         print("ELARA: session not found; use 'sessions list' to find saved IDs.", file=sys.stderr)

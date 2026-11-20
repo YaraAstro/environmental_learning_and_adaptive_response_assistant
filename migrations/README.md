@@ -2,7 +2,9 @@
 
 Executable migrations live in `src/elara/memory/migrations/` so installed wheels
 carry their own schema. `001_sessions.sql` creates sessions, turns, and action
-audits. The migrator stores a checksum and timestamp in `schema_migrations` and
+audits. `002_memories.sql` adds explicitly saved facts. The runner validates all
+applied checksums before upgrading v1 to v2; existing sessions and audit rows are
+preserved. The migrator stores a checksum and timestamp in `schema_migrations` and
 advances `PRAGMA user_version` in the same transaction as the schema changes.
 
 Migrations are forward-only. Never edit an applied migration: add a new version

@@ -5,7 +5,7 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 from elara.core.audit import AuditEvent
-from elara.core.contracts import ConversationTurn
+from elara.core.contracts import ConversationTurn, MemoryFact
 from elara.core.sessions import Session, SessionConflict, SessionNotFound, SessionSnapshot
 from elara.memory.database import connect, migrate, transaction
 from elara.observability.redaction import redact_credentials
@@ -15,6 +15,32 @@ class SQLiteStore:
     def __init__(self, path: Path) -> None:
         self.path = path
         migrate(path)
+
+    def remember(self, key: str, value: str) -> MemoryFact:
+        fact = MemoryFact(key=key, value=redact_credentials(value.strip()))
+        with connect(self.path) as connection, transaction(connection):
+            exists = connection.execute("SELECT 1 FROM memories WHERE key = ?", (key,)).fetchone()
+            count = connection.execute("SELECT count(*) FROM memories").fetchone()[0]
+            if not exists and count >= 20:
+                raise ValueError("Memory is limited to 20 facts; forget one before adding more")
+            connection.execute(
+                "INSERT INTO memories (key, value, updated_at) VALUES (?, ?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value, "
+                "updated_at=excluded.updated_at",
+                (fact.key, fact.value, datetime.now(UTC).isoformat()),
+            )
+        return fact
+
+    def memories(self) -> tuple[MemoryFact, ...]:
+        with connect(self.path) as connection:
+            rows = connection.execute("SELECT key, value FROM memories ORDER BY key").fetchall()
+        return tuple(MemoryFact.model_validate(dict(row)) for row in rows)
+
+    def forget(self, key: str) -> bool:
+        with connect(self.path) as connection:
+            deleted = connection.execute("DELETE FROM memories WHERE key = ?", (key,)).rowcount
+            connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        return deleted == 1
 
     def create_session(self) -> Session:
         session = Session(id=uuid4(), created_at=datetime.now(UTC))
