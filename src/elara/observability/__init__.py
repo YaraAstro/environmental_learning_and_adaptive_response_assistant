@@ -1,1 +1,1 @@
-"""Reserved for redacted diagnostics, durable audit, and request metrics."""
+"""Credential redaction utilities; audit contracts and storage live in core and memory."""

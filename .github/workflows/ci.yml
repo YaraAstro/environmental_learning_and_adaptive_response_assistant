@@ -21,11 +21,7 @@ jobs:
           python-version: '3.12'
           enable-cache: true
       - name: Install locked dependencies
-        if: hashFiles('uv.lock') != ''
         run: uv sync --locked --all-extras
-      - name: Resolve initial dependencies (until bootstrap creates uv.lock)
-        if: hashFiles('uv.lock') == ''
-        run: uv sync --all-extras
       - run: uv run ruff check .
       - run: uv run mypy
       - run: uv run pytest -q

@@ -1,1 +1,1 @@
-"""Reserved for canonical SQLite storage and memory lifecycle adapters."""
+"""Canonical SQLite sessions and audit storage; semantic memory is a later milestone."""

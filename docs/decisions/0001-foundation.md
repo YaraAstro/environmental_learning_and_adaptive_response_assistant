@@ -2,6 +2,11 @@
 
 Status: implemented scaffold; dependency verification pending network access.
 
+Update: Python 3.12 and locked dependencies are now installed. CI requires the
+lockfile. ADR 0002 adds persistence; the README records the remaining async test
+limitation in the restricted execution session. The decision below records the
+original bootstrap context.
+
 ## Context
 
 The workspace was empty. The existing dossier specifies Python 3.12, uv,

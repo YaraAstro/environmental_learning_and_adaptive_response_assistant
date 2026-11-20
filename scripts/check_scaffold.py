@@ -22,8 +22,11 @@ def main() -> None:
                     module = node.module or ""
                     forbidden = ("pydantic_ai", "elara.inference", "elara.platform")
                     assert not module.startswith(forbidden)
-    for path in (root / "pyproject.toml", root / "config/elara.example.toml",
-                 root / "src/elara/core/identity.toml"):
+    for path in (
+        root / "pyproject.toml",
+        root / "config/elara.example.toml",
+        root / "src/elara/core/identity.toml",
+    ):
         with path.open("rb") as handle:
             tomllib.load(handle)
     dataset = root / "evals/datasets/foundation.jsonl"
