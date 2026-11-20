@@ -8,8 +8,9 @@ provider diagnostics. Check the README for current validation limits.
 1. Run the full async suite on an unrestricted Windows host and in Windows/Linux CI.
 2. Start Ollama, install the selected local model, and run `provider smoke` using
    `config/elara.ollama.example.toml` to verify a real provider response.
-3. Add a read-only sandbox adapter through the gateway; test traversal, symlinks,
-   Windows junctions, scoped consent, and denied actions with zero OS calls.
+3. Explicit read-only workspace commands now use the audited gateway. Before
+   exposing them to models, strengthen handle-based containment for concurrent
+   filesystem changes and verify actual Windows junction behavior on the host.
 4. Connect the runtime to audited tools and test the full conversation, session
    restart, privacy, and permission flows before declaring v0.1 complete.
 

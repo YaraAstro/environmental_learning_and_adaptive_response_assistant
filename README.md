@@ -10,8 +10,9 @@ permissions, and future memory/learning policies; model providers are adapters.
 This repository includes the foundation, **local conversation persistence**, and
 an **Ollama adapter for real local conversations**. The default profile still uses
 Pydantic AI's offline `TestModel`; real inference requires the explicit Ollama
-profile below. Filesystem tools, environment collection, and autonomous learning
-are not enabled. This is not yet the full v0.1 companion.
+profile below. Explicit read-only workspace commands are available; chat does not
+yet use tools. Environment collection and autonomous learning are not enabled.
+This is not yet the full v0.1 companion.
 
 Included:
 
@@ -19,7 +20,7 @@ Included:
 - Validated TOML settings and a packaged, versioned identity constitution.
 - Typed agent contracts and a Pydantic AI mock adapter.
 - Local Ollama adapter with history replay, timeout/input/output limits, and provider checks.
-- Deny-by-default policy and a synthetic gateway scoped to actor/session/resource.
+- Deny-by-default gateway scoped to actor/session/resource, with audited workspace reads.
 - Security, configuration, runtime, and CLI tests; Windows/Linux CI configuration.
 - SQLite FTS5 preflight, synthetic sandbox, and starter evaluation scenarios.
 - SQLite migrations, atomic saved conversations, history replay, export/deletion,
@@ -56,11 +57,10 @@ Ollama service are needed in mock mode. Plain chat is temporary; saving is opt-i
 ## Real conversations with Ollama
 
 Open the installed Ollama application. If it is not running as an app, start
-`ollama serve` in a separate terminal. Then install the configured starter model
-and check the connection:
+`ollama serve` in a separate terminal. The profile uses your installed
+`lfm3-omni:2b` tag. Check the connection:
 
 ```powershell
-ollama pull qwen3:4b
 .\scripts\uv.ps1 run elara --config config/elara.ollama.example.toml provider check
 .\scripts\uv.ps1 run elara --config config/elara.ollama.example.toml provider smoke
 .\scripts\uv.ps1 run elara --config config/elara.ollama.example.toml chat --save
@@ -70,8 +70,8 @@ ollama pull qwen3:4b
 generates one fixed greeting without saving a session. Real replies print `ELARA:`;
 mock replies print `ELARA [simulation]:`. An error never silently switches modes.
 
-The example uses [qwen3:4b](https://ollama.com/library/qwen3:4b). You can use another
-installed local chat model by copying the profile to `config/elara.toml`, changing
+You can use another installed local chat model by copying the profile to
+`config/elara.toml`, changing
 `inference.model` to its exact tag from `ollama list`, and passing that config path.
 Both example profiles point at the same `.data` directory, so existing session IDs
 can be resumed with `chat --session SESSION_ID` under the Ollama profile.
@@ -85,6 +85,28 @@ not OpenAI's hosted service. See [ADR 0003](docs/decisions/0003-local-ollama.md)
 If a first model load times out, increase `request_timeout_seconds` or choose a
 smaller installed model. `max_context_characters` bounds input text rather than
 exact model tokens; it does not change Ollama's context window or RAM allocation.
+
+## Read a workspace explicitly
+
+Each invocation authorizes one operation within the specified folder. These
+commands work without Ollama and never send file contents to a model:
+
+```powershell
+.\scripts\uv.ps1 run elara --config config/elara.example.toml workspace --root sandbox list
+.\scripts\uv.ps1 run elara --config config/elara.example.toml workspace --root docs read next-steps.md
+# Use the Action audit ID printed by either command:
+.\scripts\uv.ps1 run elara --config config/elara.example.toml sessions audit AUDIT_ID
+```
+
+Reads accept UTF-8 `.txt`, `.md`, `.csv`, `.json`, and `.toml` files up to 64 KiB.
+Listings inspect at most 200 entries and do not recurse. Hidden paths, traversal,
+absolute paths, symlinks/reparse points, and hardlinked file reads are rejected.
+Use a trusted folder without concurrent hostile filesystem changes: this is not
+a race-proof OS sandbox. Source files are never modified; audit metadata is
+written to the configured database, without file contents. Invalid roots fail
+before an audit operation starts. Chat has no filesystem permission, and the
+disabled autonomous-action settings remain unchanged.
+See [workspace boundaries](docs/decisions/0004-read-only-workspace.md).
 
 ## Save and resume a conversation
 
@@ -126,7 +148,9 @@ Python 3.12.16, the dependencies, and `uv.lock` are now available. An offline
 `uv sync --locked --all-extras` succeeds. CI now always requires the lockfile.
 
 Local synchronous tests cover database operations, rollback, audit enforcement,
-redaction, provider configuration, and metadata checks: **83 tests passed**.
+redaction, provider configuration, metadata checks, and workspace boundaries:
+**105 tests passed, 1 skipped**. The host blocks real hardlink creation; simulated
+link-count rejection passed. Actual Windows junction coverage remains pending.
 Ruff, mypy, `elara doctor`, and
 wheel/source-distribution builds passed. The wheel includes its identity and SQL
 migration; private data and local caches are excluded from the source archive.
@@ -165,8 +189,8 @@ The broad dossier configuration remains a proposal for later milestones.
 Identity is packaged in `src/elara/core/identity.toml` so installed builds work
 outside this repository. Policy enforcement lives in Python, not in identity text.
 Agent output cannot create grants. The gateway requires an audit sink; SQLiteStore
-provides durable decision/start/outcome records. The current synthetic gateway is not a
-production filesystem sandbox or an authenticated multi-user security boundary.
+provides durable decision/start/outcome records. The gateway is not a production
+filesystem sandbox or an authenticated multi-user security boundary.
 
 Runtime data uses `platformdirs`; `.env`, private config, SQLite databases,
 caches, and local data are ignored by Git. No provider credentials are loaded.

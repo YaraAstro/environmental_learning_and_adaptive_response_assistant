@@ -102,6 +102,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--config", type=Path, help="Path to a validated TOML configuration")
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("doctor", help="Check Python, SQLite FTS5, identity, and AI imports")
+    workspace = commands.add_parser("workspace", help="Explicit read-only folder access")
+    workspace.add_argument(
+        "--root", type=Path, required=True, help="Folder authorized for this command"
+    )
+    workspace_commands = workspace.add_subparsers(dest="workspace_command", required=True)
+    for operation in ("read", "list"):
+        command = workspace_commands.add_parser(operation)
+        command.add_argument("path", nargs="?", default=".")
     provider = commands.add_parser("provider", help="Check the selected provider explicitly")
     provider_commands = provider.add_subparsers(dest="provider_command", required=True)
     provider_commands.add_parser("check", help="Check model readiness without sending a prompt")
@@ -131,6 +139,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         settings = load_settings(args.config)
+        if args.command == "workspace":
+            from elara.api.workspace_cli import run_workspace
+
+            return run_workspace(args, settings)
         if args.command == "doctor":
             return doctor(settings)
         if args.command == "settings":

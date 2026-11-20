@@ -16,8 +16,8 @@ class ActionRequest(Contract):
 class Grant(Contract):
     actor_id: UUID
     session_id: UUID
-    capability: Literal["demo.echo"]
-    resource: Literal["synthetic"] = "synthetic"
+    capability: Literal["demo.echo", "workspace.read", "workspace.list"]
+    resource: str = "synthetic"
 
 
 class Decision(Contract):
@@ -30,7 +30,9 @@ class AuthorizationPolicy:
         self._grants = grants
 
     def evaluate(self, request: ActionRequest) -> Decision:
-        if request.capability != "demo.echo" or request.resource != "synthetic":
+        if request.capability not in {"demo.echo", "workspace.read", "workspace.list"} or (
+            request.capability == "demo.echo" and request.resource != "synthetic"
+        ):
             return Decision(outcome="deny", reason="unsupported_capability_or_resource")
         for grant in self._grants:
             if (

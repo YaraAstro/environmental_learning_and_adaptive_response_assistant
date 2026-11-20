@@ -16,7 +16,7 @@ class AuditEvent(Contract):
     actor_id: UUID
     session_id: UUID
     kind: Literal["action.decision", "action.started", "action.succeeded", "action.failed"]
-    capability: Literal["demo.echo", "unsupported"]
+    capability: Literal["demo.echo", "workspace.read", "workspace.list", "unsupported"]
     resource_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
     outcome: Literal["allow", "deny"]
     reason: Literal[

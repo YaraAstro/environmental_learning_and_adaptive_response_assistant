@@ -1,4 +1,4 @@
-# Local Ollama profile. Download the model separately with: ollama pull qwen3:4b
+# Local Ollama profile using the installed lfm3-omni:2b model.
 # No API key is needed. This profile never falls back to cloud or mock inference.
 data_dir = "../.data"
 sandbox_dir = "../sandbox"
