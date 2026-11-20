@@ -28,7 +28,8 @@ and persist across both saved and temporary chats.
 
 Included:
 
-- Local browser UI with saved chats, memory editing, and selected text attachments.
+- React/TypeScript browser UI with saved chats, memory editing, model details,
+  and selected text, image, audio, and short-video attachments.
 - Python 3.12 package and `elara` CLI entry point.
 - Validated TOML settings and a packaged, versioned identity constitution.
 - Typed agent contracts and a Pydantic AI mock adapter.
@@ -60,10 +61,29 @@ enables the existing `api` dependency extra.
 - The sidebar shows the latest 100 conversations, including CLI chats. Select one to resume.
 - Memories opens a panel to add, edit, and forget facts. Use this panel instead of CLI slash commands.
 - Recall memories controls injection for each message; earlier chat history can still contain facts.
-- Attach text selects up to eight UTF-8 files, at most 16,000 characters total.
-  The browser sends selected contents, not filesystem access. Reselect to pick up
-  file edits. Attachments clear when changing conversations, are not separately
-  stored, and are not CLI filesystem-read audit events. Answers may quote them.
+- Attach selects UTF-8 text, JPEG/PNG/WebP images, browser-decodable audio, or short
+  videos. Dragging files onto the composer also works. Text is limited to eight
+  files and 16,000 characters total. Images are converted to JPEG and resized to
+  fit 1536 pixels. Audio is converted locally to mono 16 kHz PCM WAV.
+- Audio/video clips must be at most 30 seconds; larger clips are rejected, not
+  silently truncated. Video uses up to six evenly spaced, timestamped still frames.
+  Open the help button and enable **Include video sound** before attaching a clip
+  to send its soundtrack too. Otherwise its card explicitly says **no sound**.
+  Unsupported soundtrack decoding fails with an option to reattach frames only.
+- Media needs the corresponding capabilities reported by the installed model.
+  Limits: 40 MiB per original browser file, 4 MiB per prepared media part, ten parts,
+  16 MB of base64 media total, and one audio clip or soundtrack per turn. The API
+  checks encoding, file signatures, WAV format/duration, source labels, and bounds.
+  Image signatures are checked; the backend does not fully decode images.
+- Attachments are sent for one turn and clear after a successful reply or a chat
+  change. Reselect files to inspect them again. The browser sends selected contents,
+  not filesystem access. Media/text bytes are not directly stored in the transcript
+  or audit; replies may quote them. These are not CLI filesystem-read audit events.
+- Click the model card for its friendly overview and expandable technical details.
+  Capabilities, model family, size, quantization and reported context metadata come
+  from Ollama's `/api/show`; model names are not used to guess support. These are
+  reported capabilities, not proof of a successful media inference. ELARA currently
+  returns text replies; sampled video is not continuous native video understanding.
 - Delete chat removes that transcript, retaining memories, audit metadata, and backups.
 
 The UI binds only to `127.0.0.1`, checks Host/Origin, and requires a random launch
@@ -73,7 +93,7 @@ packaged locally, with no CDN, analytics, or cloud calls. Text is rendered as pl
 text rather than executable HTML. This protects the local browser boundary, not
 against other software running as your OS user.
 
-The first UI waits for complete replies rather than streaming. Runtime/browser
+The UI waits for complete replies rather than streaming. Runtime/browser
 smoke testing remains pending on the unrestricted host; the current environment
 cannot run the required event loop or local HTTP listener.
 
@@ -265,10 +285,14 @@ Python 3.12.16, the dependencies, and `uv.lock` are now available. An offline
 
 Local synchronous tests cover database operations, rollback, audit enforcement,
 redaction, provider configuration, metadata checks, and workspace boundaries:
-**139 tests passed, 1 skipped**. The host blocks real hardlink creation; simulated
+**161 tests passed, 1 skipped**. The host blocks real hardlink creation; simulated
 link-count rejection passed. Actual Windows junction coverage remains pending.
 Ruff, mypy, `elara doctor`, and
-wheel/source-distribution builds passed. The wheel includes its identity and SQL
+wheel/source-distribution builds passed. The React/TypeScript production build also
+passed. Media validation tests cover invalid encodings, size/duration bounds,
+capability rejection, and safe metadata. Async contract tests for the SDK's actual
+image/audio payloads are included but remain subject to the event-loop limitation
+below. The wheel includes its identity, browser assets, and SQL
 migration; private data and local caches are excluded from the source archive.
 
 The restricted execution session blocks the loopback
@@ -277,7 +301,9 @@ chat tests therefore still require an unrestricted Windows host or Windows/Linux
 CI. Those tests remain enabled; this limitation is not hidden by skips in CI.
 The user confirmed saved mock chat, a real `lfm3-omni:2b` attachment response,
 memory recall, and memory deletion in their own PowerShell. The Ollama API remains
-unreachable from this execution session. Browser UI HTTP and inference flows need
+unreachable from this execution session. A separate UI fixture server started,
+but the browser could not connect to it; local-file preview was blocked by browser
+URL policy. Browser UI HTTP and inference flows need
 a live host check; async ASGI integration tests are included for CI.
 
 To reproduce the subset that does not require an event loop:
@@ -313,6 +339,34 @@ Runtime data uses `platformdirs`; `.env`, private config, SQLite databases,
 caches, and local data are ignored by Git. No provider credentials are loaded.
 
 ## Development
+
+Run all automated checks in a normal PowerShell session:
+
+```powershell
+.\scripts\verify.ps1 -CheckOllama
+# Also reinstall locked frontend dependencies and rebuild:
+.\scripts\verify.ps1 -CheckOllama -RebuildUI
+```
+
+The Ollama check reads model metadata without generating a response. Failed checks
+are listed at the end and return a nonzero exit code. Browser media decoding and
+live attachment replies still need the smoke check in `docs/next-steps.md`.
+
+Frontend sources live in `frontend/`. Production assets are committed under
+`src/elara/api/static/` and included in the Python wheel, so normal launches do
+not need Node. To change the interface (Node 22.12+):
+
+```powershell
+cd frontend
+npm ci
+npm run build
+# For continuous rebuilding while scripts/ui.ps1 serves the app:
+npm run dev
+```
+
+Refresh the authenticated browser tab after rebuilding. Keep the source and built
+assets together when committing changes. The API's Host/Origin/token checks also
+apply to model metadata and media chat requests. No runtime CDN is used.
 
 ```powershell
 .\scripts\uv.ps1 run ruff check .

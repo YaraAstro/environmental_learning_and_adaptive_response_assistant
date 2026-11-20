@@ -1,38 +1,18 @@
 <!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>ELARA · Your space</title><link rel="stylesheet" href="/style.css">
-  <script src="/app.js" defer></script>
-</head>
-<body>
-<div class="shell">
-  <aside class="sidebar" aria-label="Conversations">
-    <a class="brand" href="/" aria-label="ELARA home"><span class="brand-mark">e.</span> ELARA <small>LOCAL COMPANION</small></a>
-    <button id="new-chat" class="new-chat"><span>＋</span> New conversation</button>
-    <div class="section-label">YOUR CONVERSATIONS <span id="session-count">0</span></div>
-    <nav id="sessions" aria-label="Saved conversations"></nav>
-    <div class="sidebar-bottom"><span class="status-dot"></span><div>Here, on your device<small id="model-label">Connecting…</small></div></div>
-  </aside>
-  <main>
-    <header><div><span class="eyebrow">YOUR SPACE</span><h1 id="chat-title">A little space to think.</h1></div>
-      <div class="header-actions"><span id="mode" class="badge">LOCAL</span><button id="memory-toggle" class="quiet">Memories <span>↗</span></button><button id="delete-chat" class="quiet danger" hidden>Delete chat</button></div>
-    </header>
-    <section id="messages" class="messages" aria-label="Conversation" aria-live="polite">
-      <div id="welcome" class="welcome"><div class="orb" aria-hidden="true"><span>e</span></div><span class="eyebrow">MEET ELARA</span><h2>What's on your mind?</h2><p>A thought, a project, or just your day.<br>I'm here to work through it with you.</p>
-        <div class="suggestions"><button data-prompt="Help me think through a project I'm working on.">Think through a project <span>↗</span></button><button data-prompt="What facts have I saved about myself?">What do you remember? <span>↗</span></button></div>
-      </div>
-      <div id="turns"></div>
-    </section>
-    <div class="composer-wrap"><div id="notice" role="alert" hidden></div><div id="attachments" class="attachments"></div>
-      <form id="composer"><label class="sr-only" for="message">Message ELARA</label><textarea id="message" placeholder="Talk to ELARA…" rows="2" maxlength="32000" required></textarea>
-        <div class="composer-tools"><div><button type="button" id="attach" class="quiet">＋ Attach text</button><label class="recall"><input id="recall" type="checkbox" checked> Recall memories</label><input id="file-input" type="file" accept=".txt,.md,.csv,.json,.toml" multiple hidden></div><button id="send" type="submit" class="send">Send <span>↑</span></button></div>
-      </form><p class="footnote">Saved on this device · Enter to send, Shift+Enter for a new line · Replies can be mistaken</p>
-    </div>
-  </main>
-  <aside id="memory-panel" class="memory-panel" hidden aria-label="Your memories"><div class="memory-heading"><div><span class="eyebrow">A LITTLE CONTINUITY</span><h2>Your memories</h2></div><button id="memory-close" class="quiet" aria-label="Close memories">×</button></div><p class="muted">Only what you choose to keep. Shared across your conversations.</p>
-    <div id="memory-list"></div><form id="memory-form"><label for="memory-key">Name this memory</label><input id="memory-key" placeholder="e.g. name or project" pattern="[a-z][a-z0-9_-]{0,47}" maxlength="48" required><label for="memory-value">What should ELARA remember?</label><textarea id="memory-value" placeholder="Write a fact or preference…" maxlength="500" rows="3" required></textarea><button type="submit" class="save-memory">Save memory</button></form>
-    <p class="footnote">20 memories · 500 characters each<br>Editing a key replaces its value. Forgetting does not erase earlier chats or backups.</p>
-  </aside>
-</div>
-</body></html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#111115" />
+    <meta
+      name="description"
+      content="Your local space to think, create, and explore with ELARA."
+    />
+    <title>ELARA · A little space to think</title>
+    <script type="module" crossorigin src="/app.js"></script>
+    <link rel="stylesheet" crossorigin href="/style.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>

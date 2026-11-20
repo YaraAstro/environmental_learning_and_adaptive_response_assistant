@@ -1,3 +1,4 @@
+import base64
 from uuid import UUID, uuid4
 
 import httpx2 as httpx
@@ -115,8 +116,9 @@ def test_ui_assets_and_identity_are_packaged(tmp_path):
     app = create_app(Settings(data_dir=tmp_path), "test-token")
     html = endpoint(app, "/")().body.decode()
     js = endpoint(app, "/app.js")().body.decode()
-    assert "ELARA" in html and 'id="memory-form"' in html
-    assert "innerHTML" not in js
+    assert "ELARA" in html and 'id="root"' in html
+    assert "/app.js" in html and "/style.css" in html
+    assert "memory-form" in js
     assert "test-token" not in html + js
     assert "You are ELARA" in load_identity().instructions()
     assert "distinguish it honestly" in load_identity().instructions()
@@ -170,14 +172,31 @@ async def test_http_chat_auth_memory_attachment_and_failed_turn(tmp_path, monkey
             "session_id": session["id"],
             "message": "Hi",
             "attachments": [{"path": "a.txt", "content": "note"}],
+            "media": [
+                {
+                    "name": "frame.png",
+                    "mime_type": "image/png",
+                    "source": "image",
+                    "data": base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"fixture").decode(),
+                }
+            ],
         }
         reply = await client.post("/api/chat", json=body)
         assert reply.status_code == 200 and reply.json()["message"] == "Hello Yara"
         assert runtime.requests[-1].memories[0].value == "Yara"
         assert runtime.requests[-1].attachments[0].content == "note"
+        assert runtime.requests[-1].media[0].name == "frame.png"
         runtime.fail = True
         assert (await client.post("/api/chat", json=body | {"recall": False})).status_code == 502
         assert not runtime.requests[-1].memories
         store = SQLiteStore(tmp_path / "database" / "elara.sqlite3")
         assert len(store.snapshot(UUID(session["id"])).turns) == 2
-        assert (await client.post("/api/chat", content=b"x" * 300001)).status_code == 413
+        saved = await client.get(f"/api/sessions/{session['id']}")
+        assert body["media"][0]["data"] not in saved.text
+        invalid = await client.post(
+            "/api/chat", json=body | {"media": [body["media"][0] | {"source": "audio"}]}
+        )
+        assert invalid.status_code == 422
+        assert body["media"][0]["data"] not in invalid.text
+        assert (await client.post("/api/chat", content=b"x" * 17_000_001)).status_code == 413
+        assert (await client.put("/api/memories", content=b"x" * 300_001)).status_code == 413

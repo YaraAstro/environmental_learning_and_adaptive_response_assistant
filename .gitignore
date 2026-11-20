@@ -31,3 +31,6 @@ evals/reports/*
 .vscode/
 Thumbs.db
 .DS_Store
+
+# Frontend dependencies; the built UI is tracked for Python-only launches.
+node_modules/

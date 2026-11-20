@@ -1,4 +1,7 @@
+import base64
+import io
 import json
+import wave
 from typing import Any
 
 import httpx2 as httpx
@@ -8,6 +11,7 @@ from pydantic_ai import models
 from elara.core.contracts import AgentRequest, ConversationTurn
 from elara.core.identity import load_identity
 from elara.core.inference import InferenceError
+from elara.core.media import AttachedMedia
 from elara.core.settings import InferenceSettings
 from elara.inference import ollama
 from elara.inference.ollama import OllamaAgentRuntime
@@ -22,7 +26,13 @@ def transport(monkeypatch: pytest.MonkeyPatch) -> list[httpx.Request]:
     def handler(request: httpx.Request) -> httpx.Response:
         calls.append(request)
         if request.url.path == "/api/show":
-            return httpx.Response(200, json={"details": {"format": "gguf"}})
+            return httpx.Response(
+                200,
+                json={
+                    "details": {"format": "gguf"},
+                    "capabilities": ["completion", "vision", "audio"],
+                },
+            )
         return httpx.Response(
             200,
             json={
@@ -75,6 +85,79 @@ async def test_real_adapter_replays_history_and_labels_response(
     assert not payload.get("tools")
     assert payload.get("max_tokens", payload.get("max_completion_tokens")) == 1024
     assert transport[-1].headers["authorization"] == "Bearer ollama-local"
+
+
+async def test_adapter_sends_real_image_and_audio_parts(transport):
+    buffer = io.BytesIO()
+    with wave.open(buffer, "wb") as audio:
+        audio.setnchannels(1)
+        audio.setsampwidth(2)
+        audio.setframerate(16000)
+        audio.writeframes(b"\0" * 320)
+    image_data = base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"fixture").decode()
+    audio_data = base64.b64encode(buffer.getvalue()).decode()
+    runtime = OllamaAgentRuntime(
+        load_identity(), InferenceSettings(provider="ollama", model="local:omni")
+    )
+    await runtime.respond(
+        AgentRequest(
+            message="Describe this clip",
+            media=(
+                AttachedMedia(
+                    name="frame.png",
+                    mime_type="image/png",
+                    data=image_data,
+                    source="video_frame",
+                    timestamp=1.5,
+                ),
+                AttachedMedia(
+                    name="sound.wav", mime_type="audio/wav", data=audio_data, source="video_audio"
+                ),
+            ),
+        )
+    )
+    payload = json.loads(transport[-1].content)
+    parts = payload["messages"][-1]["content"]
+    images = [part for part in parts if part["type"] == "image_url"]
+    audios = [part for part in parts if part["type"] == "input_audio"]
+    assert images[0]["image_url"]["url"] == f"data:image/png;base64,{image_data}"
+    assert audios[0]["input_audio"] == {"format": "wav", "data": audio_data}
+    assert "1.5" in parts[0]["text"]
+    assert image_data not in parts[0]["text"]
+    assert not payload.get("tools")
+
+
+async def test_missing_media_capability_stops_before_generation(monkeypatch):
+    original = httpx.AsyncClient
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        return httpx.Response(
+            200, json={"details": {"format": "gguf"}, "capabilities": ["completion"]}
+        )
+
+    monkeypatch.setattr(
+        ollama.httpx,
+        "AsyncClient",
+        lambda **kw: original(transport=httpx.MockTransport(handler), **kw),
+    )
+    runtime = OllamaAgentRuntime(
+        load_identity(), InferenceSettings(provider="ollama", model="text:only")
+    )
+    image_data = base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"fixture").decode()
+    with pytest.raises(InferenceError, match="vision"):
+        await runtime.respond(
+            AgentRequest(
+                message="Look",
+                media=(
+                    AttachedMedia(
+                        name="image.png", mime_type="image/png", data=image_data, source="image"
+                    ),
+                ),
+            )
+        )
+    assert [request.url.path for request in calls] == ["/api/show"]
 
 
 @pytest.mark.parametrize("failure", ["cloud", "connect", "server", "timeout"])

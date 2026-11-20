@@ -3,7 +3,9 @@
 from typing import Literal, Protocol
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from elara.core.media import AttachedMedia, validate_media_batch
 
 
 class Contract(BaseModel):
@@ -31,6 +33,12 @@ class AgentRequest(Contract):
     history: tuple[ConversationTurn, ...] = ()
     attachments: tuple[AttachedDocument, ...] = ()
     memories: tuple[MemoryFact, ...] = ()
+    media: tuple[AttachedMedia, ...] = Field(default=(), max_length=10, repr=False)
+
+    @model_validator(mode="after")
+    def bounded_media(self) -> "AgentRequest":
+        validate_media_batch(self.media)
+        return self
 
 
 class AgentResponse(Contract):

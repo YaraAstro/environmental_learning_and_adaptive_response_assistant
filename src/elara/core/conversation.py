@@ -3,6 +3,7 @@
 from uuid import UUID
 
 from elara.core.contracts import AgentRequest, AgentResponse, AgentRuntime, AttachedDocument
+from elara.core.media import AttachedMedia
 from elara.core.sessions import SessionRepository
 
 
@@ -12,11 +13,20 @@ class ConversationService:
         self._sessions = sessions
 
     async def respond(
-        self, session_id: UUID, message: str, *, attachments: tuple[AttachedDocument, ...] = ()
+        self,
+        session_id: UUID,
+        message: str,
+        *,
+        attachments: tuple[AttachedDocument, ...] = (),
+        media: tuple[AttachedMedia, ...] = (),
     ) -> AgentResponse:
         snapshot = self._sessions.snapshot(session_id)
         request = AgentRequest(
-            message=message, session_id=session_id, history=snapshot.turns, attachments=attachments
+            message=message,
+            session_id=session_id,
+            history=snapshot.turns,
+            attachments=attachments,
+            media=media,
         )
         response = await self._runtime.respond(request)
         if response.session_id != session_id:

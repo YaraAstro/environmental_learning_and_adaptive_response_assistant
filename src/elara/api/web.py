@@ -9,7 +9,8 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import Response
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse, Response
 from pydantic import Field, model_validator
 from starlette.middleware.base import RequestResponseEndpoint
 
@@ -17,8 +18,10 @@ from elara.app import build_runtime
 from elara.core.contracts import AttachedDocument, Contract, MemoryFact
 from elara.core.conversation import ConversationService
 from elara.core.inference import InferenceError
+from elara.core.media import AttachedMedia, validate_media_batch
 from elara.core.sessions import SessionConflict, SessionNotFound
 from elara.core.settings import Settings
+from elara.inference.ollama import describe_model
 from elara.memory.runtime import MemoryRuntime
 from elara.memory.store import SQLiteStore
 
@@ -28,9 +31,11 @@ class ChatInput(Contract):
     message: str = Field(min_length=1, max_length=32000)
     recall: bool = True
     attachments: tuple[AttachedDocument, ...] = Field(default=(), max_length=8)
+    media: tuple[AttachedMedia, ...] = Field(default=(), max_length=10, repr=False)
 
     @model_validator(mode="after")
     def bounded_files(self) -> "ChatInput":
+        validate_media_batch(self.media)
         if sum(len(item.content) for item in self.attachments) > 16000:
             raise ValueError("Attachments exceed 16,000 characters")
         for item in self.attachments:
@@ -79,7 +84,8 @@ def create_app(settings: Settings, token: str, port: int = 8765) -> FastAPI:
             body = bytearray()
             async for chunk in request.stream():
                 body.extend(chunk)
-                if len(body) > 300000:
+                limit = 17_000_000 if request.url.path == "/api/chat" else 300_000
+                if len(body) > limit:
                     return Response("Request too large", status_code=413)
             request._body = bytes(body)
         response = await call_next(request)
@@ -88,10 +94,22 @@ def create_app(settings: Settings, token: str, port: int = 8765) -> FastAPI:
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; script-src 'self'; style-src 'self'; "
-            "img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; "
+            "img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; "
+            "frame-ancestors 'none'; "
             "base-uri 'none'; form-action 'self'"
         )
         return response
+
+    @app.exception_handler(RequestValidationError)
+    async def invalid_input(request: Request, exc: RequestValidationError) -> Response:
+        # Pydantic's default errors can echo complete base64 inputs back into browser logs.
+        return JSONResponse(
+            {
+                "detail": "Invalid input. Check attachment types and size limits, "
+                "message length, and memory key/value format."
+            },
+            status_code=422,
+        )
 
     @app.exception_handler(InferenceError)
     async def inference_error(request: Request, exc: InferenceError) -> Response:
@@ -134,6 +152,10 @@ def create_app(settings: Settings, token: str, port: int = 8765) -> FastAPI:
             "model": settings.inference.model,
             "saved": True,
         }
+
+    @app.get("/api/model")
+    def model_details() -> dict[str, Any]:
+        return describe_model(settings.inference)
 
     @app.get("/api/sessions")
     def sessions() -> list[dict[str, Any]]:
@@ -184,6 +206,8 @@ def create_app(settings: Settings, token: str, port: int = 8765) -> FastAPI:
 
     @app.post("/api/chat")
     async def chat(body: ChatInput) -> dict[str, Any]:
+        if body.media and settings.inference.provider != "ollama":
+            raise HTTPException(400, "Media attachments require a compatible local Ollama model.")
         if generation_lock.locked():
             raise HTTPException(
                 409, "ELARA is already answering. Try again when the reply finishes."
@@ -195,7 +219,7 @@ def create_app(settings: Settings, token: str, port: int = 8765) -> FastAPI:
                 else runtime
             )
             result = await ConversationService(selected, store).respond(
-                body.session_id, body.message, attachments=body.attachments
+                body.session_id, body.message, attachments=body.attachments, media=body.media
             )
         return result.model_dump(mode="json")
 
