@@ -9,8 +9,10 @@ description = "Environmental Learning and Adaptive Response Assistant"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "httpx2>=2.16,<3",
+    "openai>=3.57,<4",
     "pydantic>=2.10,<3",
-    "pydantic-ai>=1,<2",
+    "pydantic-ai>=1.107.10,<2",
     "pydantic-settings>=2.7,<3",
     "aiosqlite>=0.20,<1",
     "platformdirs>=4,<5",

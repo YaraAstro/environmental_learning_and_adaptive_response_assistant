@@ -10,7 +10,7 @@ this repository's README describes what actually exists.
 | `core` | Settings, identity, conversation service, session and audit contracts |
 | `actions` | Pure policy evaluator; audited synthetic gateway and scoped grants |
 | `memory` | SQLite migrations, sessions, atomic exchanges, backups, audit storage |
-| `inference` | Offline Pydantic AI adapter, including history translation |
+| `inference` | Mock and local Ollama adapters, readiness checks, history translation |
 | `observability` | Best-effort credential redaction before persistence |
 | `app.py` | Dependency composition |
 | `cli.py` | Diagnostics, saved/temporary chat, sessions, and database operations |

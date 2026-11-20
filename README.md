@@ -7,16 +7,18 @@ permissions, and future memory/learning policies; model providers are adapters.
 
 ## Current status
 
-This repository includes the foundation plus **local conversation persistence**.
-It is not yet the full v0.1 companion. The CLI uses Pydantic AI's offline `TestModel`
-and labels every response as simulated. Live inference, filesystem tools,
-environment collection, and autonomous learning are not enabled.
+This repository includes the foundation, **local conversation persistence**, and
+an **Ollama adapter for real local conversations**. The default profile still uses
+Pydantic AI's offline `TestModel`; real inference requires the explicit Ollama
+profile below. Filesystem tools, environment collection, and autonomous learning
+are not enabled. This is not yet the full v0.1 companion.
 
 Included:
 
 - Python 3.12 package and `elara` CLI entry point.
 - Validated TOML settings and a packaged, versioned identity constitution.
 - Typed agent contracts and a Pydantic AI mock adapter.
+- Local Ollama adapter with history replay, timeout/input/output limits, and provider checks.
 - Deny-by-default policy and a synthetic gateway scoped to actor/session/resource.
 - Security, configuration, runtime, and CLI tests; Windows/Linux CI configuration.
 - SQLite FTS5 preflight, synthetic sandbox, and starter evaluation scenarios.
@@ -48,8 +50,41 @@ Then:
 .\scripts\uv.ps1 run elara --config config/elara.example.toml settings show
 ```
 
-`chat` uses a fixed simulated response. No keys, model downloads, or Ollama
-service are needed. Plain chat is temporary; persistence is explicitly opt-in.
+The default `chat` uses a fixed simulated response. No keys, model downloads, or
+Ollama service are needed in mock mode. Plain chat is temporary; saving is opt-in.
+
+## Real conversations with Ollama
+
+Open the installed Ollama application. If it is not running as an app, start
+`ollama serve` in a separate terminal. Then install the configured starter model
+and check the connection:
+
+```powershell
+ollama pull qwen3:4b
+.\scripts\uv.ps1 run elara --config config/elara.ollama.example.toml provider check
+.\scripts\uv.ps1 run elara --config config/elara.ollama.example.toml provider smoke
+.\scripts\uv.ps1 run elara --config config/elara.ollama.example.toml chat --save
+```
+
+`provider check` verifies model metadata without sending a prompt; `provider smoke`
+generates one fixed greeting without saving a session. Real replies print `ELARA:`;
+mock replies print `ELARA [simulation]:`. An error never silently switches modes.
+
+The example uses [qwen3:4b](https://ollama.com/library/qwen3:4b). You can use another
+installed local chat model by copying the profile to `config/elara.toml`, changing
+`inference.model` to its exact tag from `ollama list`, and passing that config path.
+Both example profiles point at the same `.data` directory, so existing session IDs
+can be resumed with `chat --session SESSION_ID` under the Ollama profile.
+
+No API key is needed. This adapter accepts only literal loopback endpoints and
+rejects cloud tags, remote aliases, redirects, and environment proxy overrides.
+It does not start services, download models, or modify Ollama's configuration.
+The local daemon must be trusted. The OpenAI-compatible SDK connects to Ollama,
+not OpenAI's hosted service. See [ADR 0003](docs/decisions/0003-local-ollama.md).
+
+If a first model load times out, increase `request_timeout_seconds` or choose a
+smaller installed model. `max_context_characters` bounds input text rather than
+exact model tokens; it does not change Ollama's context window or RAM allocation.
 
 ## Save and resume a conversation
 
@@ -91,7 +126,8 @@ Python 3.12.16, the dependencies, and `uv.lock` are now available. An offline
 `uv sync --locked --all-extras` succeeds. CI now always requires the lockfile.
 
 Local synchronous tests cover database operations, rollback, audit enforcement,
-redaction, and configuration: **39 tests passed**. Ruff, mypy, `elara doctor`, and
+redaction, provider configuration, and metadata checks: **83 tests passed**.
+Ruff, mypy, `elara doctor`, and
 wheel/source-distribution builds passed. The wheel includes its identity and SQL
 migration; private data and local caches are excluded from the source archive.
 
@@ -99,6 +135,9 @@ The restricted execution session blocks the loopback
 socket pair that Windows asyncio needs to create an event loop. Async/runtime and
 chat tests therefore still require an unrestricted Windows host or Windows/Linux
 CI. Those tests remain enabled; this limitation is not hidden by skips in CI.
+The user's saved mock-chat command was confirmed working in their own PowerShell.
+The Ollama API is unreachable from this session, so a real local response has not
+been verified here. Run the `provider smoke` command above after installing the model.
 
 To reproduce the subset that does not require an event loop:
 
@@ -119,8 +158,8 @@ It checks Python syntax, TOML/JSON integrity, and host SQLite FTS5 behavior only
 
 Use `--config PATH` or `ELARA_CONFIG_PATH`; otherwise built-in safe defaults apply.
 Relative paths resolve against the config file. Settings do not create folders.
-Only the documented v0.0 fields are accepted; attempts to enable live providers,
-write tools, observation, or learning are rejected until those features exist.
+Only documented fields are accepted. Mock and local Ollama are supported; cloud
+providers, write tools, observation, and learning remain disabled.
 The broad dossier configuration remains a proposal for later milestones.
 
 Identity is packaged in `src/elara/core/identity.toml` so installed builds work
@@ -130,7 +169,7 @@ provides durable decision/start/outcome records. The current synthetic gateway i
 production filesystem sandbox or an authenticated multi-user security boundary.
 
 Runtime data uses `platformdirs`; `.env`, private config, SQLite databases,
-caches, and local data are ignored by Git. No credentials are loaded in v0.0.
+caches, and local data are ignored by Git. No provider credentials are loaded.
 
 ## Development
 
@@ -142,7 +181,8 @@ caches, and local data are ignored by Git. No credentials are loaded in v0.0.
 .\scripts\uv.ps1 build
 ```
 
-Tests disable live Pydantic AI model requests. Core contracts must not import
+Tests disable live Pydantic AI requests; adapter contract tests use an in-memory
+HTTP transport rather than a live endpoint. Core contracts must not import
 provider SDKs or OS adapters. See [architecture](docs/architecture.md),
 [initial decisions](docs/decisions/0001-foundation.md), and
 [next steps](docs/next-steps.md).

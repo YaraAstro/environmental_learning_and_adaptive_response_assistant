@@ -1,21 +1,66 @@
-"""Validated v0.0 settings; unsupported capabilities cannot be switched on."""
+"""Validated configuration with explicit mock or local-only Ollama inference."""
 
 import os
+import re
 import tomllib
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlsplit
 
 from platformdirs import user_data_path
-from pydantic import Field
+from pydantic import Field, field_validator, model_validator
 
 from elara.core.contracts import Contract
 
 
 class InferenceSettings(Contract):
-    provider: Literal["mock"] = "mock"
+    provider: Literal["mock", "ollama"] = "mock"
+    model: str | None = None
+    base_url: str = "http://127.0.0.1:11434/v1"
     cloud_data_policy: Literal["never"] = "never"
     allow_silent_cloud_fallback: Literal[False] = False
     max_steps_per_request: int = Field(default=8, ge=1, le=32)
+    max_output_tokens: int = Field(default=1024, ge=1, le=8192)
+    max_context_characters: int = Field(default=24000, ge=1000, le=128000)
+    request_timeout_seconds: float = Field(default=120, ge=1, le=600, allow_inf_nan=False)
+
+    @field_validator("base_url")
+    @classmethod
+    def local_endpoint_only(cls, value: str) -> str:
+        parts = urlsplit(value)
+        if (
+            parts.scheme != "http"
+            or parts.hostname not in {"127.0.0.1", "::1"}
+            or parts.username is not None
+            or parts.password is not None
+            or parts.path not in {"/v1", "/v1/"}
+            or parts.query
+            or parts.fragment
+            or parts.port is None
+            or not 1 <= parts.port <= 65535
+            or any(character.isspace() for character in value)
+        ):
+            raise ValueError("Ollama must use a literal loopback HTTP address and /v1 path")
+        return value.rstrip("/")
+
+    @field_validator("model")
+    @classmethod
+    def local_model_only(cls, value: str | None) -> str | None:
+        if value is not None and (
+            not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}", value)
+            or "cloud" in value.lower()
+            or "://" in value
+        ):
+            raise ValueError("Select a local Ollama model tag; cloud models are not supported")
+        return value
+
+    @model_validator(mode="after")
+    def model_required(self) -> "InferenceSettings":
+        if self.provider == "ollama" and not self.model:
+            raise ValueError("Ollama requires an explicit model tag")
+        if self.provider == "mock" and self.model is not None:
+            raise ValueError("A model tag requires provider = 'ollama'")
+        return self
 
 
 class ActionSettings(Contract):

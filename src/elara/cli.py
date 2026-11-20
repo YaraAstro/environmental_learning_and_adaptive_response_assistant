@@ -1,4 +1,4 @@
-"""A small offline CLI for validating the project foundation."""
+"""Local CLI for explicit inference selection and saved conversations."""
 
 import argparse
 import asyncio
@@ -15,6 +15,7 @@ from elara import __version__
 from elara.core.contracts import AgentRequest, ConversationTurn
 from elara.core.conversation import ConversationService
 from elara.core.identity import load_identity
+from elara.core.inference import InferenceError
 from elara.core.sessions import SessionConflict, SessionNotFound
 from elara.core.settings import Settings, load_settings
 from elara.memory.database import backup_database
@@ -45,6 +46,8 @@ def doctor(settings: Settings) -> int:
                 "pydantic_ai": "import_ok",
                 "identity_version": identity.version,
                 "provider": settings.inference.provider,
+                "model": settings.inference.model,
+                "provider_checked": False,
                 "network_requested": False,
                 "persistent_data_written": False,
             },
@@ -94,14 +97,20 @@ def session_command(args: argparse.Namespace, settings: Settings) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="elara", description="ELARA offline foundation")
+    parser = argparse.ArgumentParser(prog="elara", description="ELARA local assistant")
     parser.add_argument("--version", action="version", version=f"ELARA {__version__}")
     parser.add_argument("--config", type=Path, help="Path to a validated TOML configuration")
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("doctor", help="Check Python, SQLite FTS5, identity, and AI imports")
+    provider = commands.add_parser("provider", help="Check the selected provider explicitly")
+    provider_commands = provider.add_subparsers(dest="provider_command", required=True)
+    provider_commands.add_parser("check", help="Check model readiness without sending a prompt")
+    provider_commands.add_parser(
+        "smoke", help="Generate one fixed greeting without saving a session"
+    )
     settings_command = commands.add_parser("settings", help="Inspect effective settings")
     settings_command.add_subparsers(dest="settings_command", required=True).add_parser("show")
-    chat = commands.add_parser("chat", help="Run a clearly labelled offline simulation")
+    chat = commands.add_parser("chat", help="Chat using the explicitly configured provider")
     chat.add_argument("message", nargs="?", help="One-shot message; omit for an interactive loop")
     persistence = chat.add_mutually_exclusive_group()
     persistence.add_argument("--save", action="store_true", help="Save a new local conversation")
@@ -137,9 +146,36 @@ def main(argv: list[str] | None = None) -> int:
                 backup_database(database_path(settings), args.output)
                 print("Database backup created.")
             return 0
+        if args.command == "provider":
+            if settings.inference.provider == "ollama":
+                from elara.inference.ollama import check_ollama
+
+                check_ollama(settings.inference)
+            if args.provider_command == "check":
+                print(
+                    json.dumps(
+                        {
+                            "provider": settings.inference.provider,
+                            "model": settings.inference.model,
+                            "status": "ready"
+                            if settings.inference.provider == "ollama"
+                            else "simulation",
+                            "generation_tested": False,
+                        },
+                        indent=2,
+                    )
+                )
+                return 0
         from elara.app import build_runtime
 
         runtime = build_runtime(settings)
+        if args.command == "provider":
+            result = asyncio.run(
+                runtime.respond(AgentRequest(message="Say hello in one short sentence."))
+            )
+            label = "ELARA [simulation]" if result.simulated else "ELARA"
+            print(f"{label}: {result.message}")
+            return 0
         session_id = uuid4()
         conversation: ConversationService | None = None
         temporary_history: list[ConversationTurn] = []
@@ -170,13 +206,19 @@ def main(argv: list[str] | None = None) -> int:
                         ConversationTurn(role="assistant", content=result.message),
                     ]
                 )
-            print(f"ELARA [simulation]: {result.message}")
+            label = "ELARA [simulation]" if result.simulated else "ELARA"
+            print(f"{label}: {result.message}")
 
         if args.message is not None:
             asyncio.run(respond(args.message))
         else:
             retention = "Saved locally." if conversation else "No conversation is saved."
-            print(f"ELARA offline simulation. {retention} Type /exit to quit.")
+            mode = (
+                "offline simulation"
+                if settings.inference.provider == "mock"
+                else (f"local Ollama / {settings.inference.model}")
+            )
+            print(f"ELARA {mode}. {retention} Type /exit to quit.")
             while True:
                 message = input("You: ").strip()
                 if message in {"/exit", "/quit"}:
@@ -192,6 +234,10 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     except FileExistsError:
         print("ELARA: output already exists; choose a new filename.", file=sys.stderr)
+        return 1
+    except InferenceError as exc:
+        # These are controlled application messages, never raw provider responses.
+        print(f"ELARA: {exc}", file=sys.stderr)
         return 1
     except (ValidationError, OSError, ValueError, sqlite3.Error) as exc:
         # Do not echo invalid config values, prompts, or provider credentials.

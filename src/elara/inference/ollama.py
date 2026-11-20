@@ -1,0 +1,138 @@
+"""Explicit, local-only Ollama inference with no provider fallback or tool access."""
+
+import asyncio
+from typing import Any
+
+import httpx2 as httpx
+from openai import APIError, AsyncOpenAI
+from pydantic_ai import Agent
+from pydantic_ai.exceptions import AgentRunError
+from pydantic_ai.models.ollama import OllamaModel
+from pydantic_ai.providers.ollama import OllamaProvider
+from pydantic_ai.settings import ModelSettings
+from pydantic_ai.usage import UsageLimits
+
+from elara.core.contracts import AgentRequest, AgentResponse
+from elara.core.identity import IdentityPolicy
+from elara.core.inference import InferenceError
+from elara.core.settings import InferenceSettings
+from elara.inference.history import model_history
+
+
+def validate_local_model(response: httpx.Response) -> None:
+    if response.status_code == 404:
+        raise InferenceError("The selected model is not installed. Pull its exact tag with Ollama.")
+    if response.status_code != 200:
+        raise InferenceError("Ollama rejected the model check. Check the local service and model.")
+    try:
+        info: Any = response.json()
+    except ValueError:
+        raise InferenceError("Ollama returned invalid model metadata.") from None
+    if not isinstance(info, dict):
+        raise InferenceError("Ollama returned invalid model metadata.")
+    if info.get("remote_host") or info.get("remote_model"):
+        raise InferenceError("This model routes to a remote service. Select a fully local model.")
+    # Local models report their format/family. Fail closed on empty/unknown proxy responses.
+    details = info.get("details")
+    if not isinstance(details, dict) or not details.get("format"):
+        raise InferenceError("Cannot verify local model details. Check your Ollama installation.")
+
+
+def model_details_url(settings: InferenceSettings) -> str:
+    return settings.base_url.removesuffix("/v1") + "/api/show"
+
+
+def check_ollama(settings: InferenceSettings) -> None:
+    """Bounded metadata request only: no prompt, model generation, download, or keys."""
+    if settings.provider != "ollama":
+        raise InferenceError("Select the Ollama provider before checking it.")
+    try:
+        with httpx.Client(trust_env=False, follow_redirects=False, timeout=3.0) as client:
+            response = client.post(model_details_url(settings), json={"model": settings.model})
+        validate_local_model(response)
+    except httpx.HTTPError:
+        raise InferenceError(
+            "Cannot reach local Ollama. Open the Ollama app or run 'ollama serve'."
+        ) from None
+
+
+class OllamaAgentRuntime:
+    def __init__(self, identity: IdentityPolicy, settings: InferenceSettings) -> None:
+        if settings.provider != "ollama" or settings.model is None:
+            raise ValueError("Ollama runtime requires an explicit local model")
+        self._settings = settings
+        self._model = settings.model
+        self._instructions = identity.instructions() + (
+            "\nYou can converse using the supplied conversation history. "
+            "You have no filesystem, shell, environment sensors, or other tools. "
+            "Do not claim to have inspected or changed anything outside this conversation."
+        )
+
+    def validate_request(self, request: AgentRequest) -> None:
+        characters = len(self._instructions) + len(request.message)
+        characters += sum(len(turn.content) for turn in request.history)
+        if characters > self._settings.max_context_characters:
+            raise InferenceError(
+                "Conversation exceeds the configured input size. Start a new session "
+                "or increase max_context_characters after checking model capacity."
+            )
+
+    def build_agent(self, http_client: httpx.AsyncClient) -> Agent[None, str]:
+        """Construct the SDK boundary without connecting; the caller owns the HTTP client."""
+        client = AsyncOpenAI(
+            api_key="ollama-local",
+            base_url=self._settings.base_url,
+            http_client=http_client,
+            max_retries=0,
+        )
+        model = OllamaModel(self._model, provider=OllamaProvider(openai_client=client))
+        model_settings = ModelSettings(
+            max_tokens=self._settings.max_output_tokens,
+            timeout=self._settings.request_timeout_seconds,
+            thinking=False,
+        )
+        agent: Agent[None, str] = Agent(
+            model,
+            instructions=self._instructions,
+            model_settings=model_settings,
+            retries=0,
+        )
+        agent.instrument = False
+        return agent
+
+    async def respond(self, request: AgentRequest) -> AgentResponse:
+        self.validate_request(request)
+        try:
+            async with asyncio.timeout(self._settings.request_timeout_seconds):
+                # Each call owns its client, so separate CLI event loops never reuse old sockets.
+                async with httpx.AsyncClient(
+                    trust_env=False,
+                    follow_redirects=False,
+                    timeout=httpx.Timeout(self._settings.request_timeout_seconds, connect=3.0),
+                ) as http_client:
+                    metadata = await http_client.post(
+                        model_details_url(self._settings),
+                        json={"model": self._model},
+                        timeout=3.0,
+                    )
+                    validate_local_model(metadata)
+                    # Explicit placeholder avoids inheriting cloud credentials or environment URLs.
+                    agent = self.build_agent(http_client)
+                    result = await agent.run(
+                        request.message,
+                        message_history=model_history(request.history),
+                        usage_limits=UsageLimits(request_limit=1),
+                    )
+            if not result.output.strip():
+                raise InferenceError("The model returned no text. Check its output-token limit.")
+            return AgentResponse(
+                message=result.output, session_id=request.session_id, simulated=False
+            )
+        except (TimeoutError, httpx.TimeoutException):
+            raise InferenceError(
+                "Ollama timed out. Try a smaller local model or increase request_timeout_seconds."
+            ) from None
+        except (APIError, httpx.HTTPError, AgentRunError):
+            raise InferenceError(
+                "Local inference failed. Check Ollama and the model; no fallback was attempted."
+            ) from None

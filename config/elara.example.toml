@@ -1,4 +1,4 @@
-# Implemented v0.0 settings. Unknown/unsupported options fail validation.
+# Offline mock profile. For real local inference use elara.ollama.example.toml.
 # Copy to config/elara.toml and pass --config or set ELARA_CONFIG_PATH.
 # Relative directories are resolved against this configuration file.
 data_dir = "../.data"

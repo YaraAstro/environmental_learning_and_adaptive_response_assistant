@@ -443,6 +443,8 @@ version = "0.0.1"
 source = { editable = "." }
 dependencies = [
     { name = "aiosqlite" },
+    { name = "httpx2" },
+    { name = "openai" },
     { name = "platformdirs" },
     { name = "psutil" },
     { name = "pydantic" },
@@ -470,10 +472,12 @@ dev = [
 requires-dist = [
     { name = "aiosqlite", specifier = ">=0.20,<1" },
     { name = "fastapi", marker = "extra == 'api'", specifier = ">=0.115,<1" },
+    { name = "httpx2", specifier = ">=2.16,<3" },
+    { name = "openai", specifier = ">=3.57,<4" },
     { name = "platformdirs", specifier = ">=4,<5" },
     { name = "psutil", specifier = ">=6,<8" },
     { name = "pydantic", specifier = ">=2.10,<3" },
-    { name = "pydantic-ai", specifier = ">=1,<2" },
+    { name = "pydantic-ai", specifier = ">=1.107.10,<2" },
     { name = "pydantic-settings", specifier = ">=2.7,<3" },
     { name = "structlog", specifier = ">=25,<26" },
     { name = "uvicorn", marker = "extra == 'api'", specifier = ">=0.34,<1" },

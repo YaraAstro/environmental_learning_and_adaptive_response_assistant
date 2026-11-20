@@ -1,0 +1,15 @@
+# Local Ollama profile. Download the model separately with: ollama pull qwen3:4b
+# No API key is needed. This profile never falls back to cloud or mock inference.
+data_dir = "../.data"
+sandbox_dir = "../sandbox"
+
+[inference]
+provider = "ollama"
+model = "lfm3-omni:2b"
+base_url = "http://127.0.0.1:11434/v1"
+cloud_data_policy = "never"
+allow_silent_cloud_fallback = false
+max_steps_per_request = 1
+max_output_tokens = 1024
+max_context_characters = 24000
+request_timeout_seconds = 120
