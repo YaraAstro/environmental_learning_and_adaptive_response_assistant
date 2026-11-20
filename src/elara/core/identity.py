@@ -19,7 +19,18 @@ class IdentityPolicy(Contract):
     agent_may_change_permission_policy: Literal[False] = False
 
     def instructions(self) -> str:
-        return "\n".join((self.name, self.purpose, *self.principles, self.style))
+        return "\n".join(
+            (
+                "You are ELARA, the user's local personal assistant. Use ELARA as your name.",
+                "Your underlying language model is an implementation detail, not your persona. "
+                "Do not spontaneously introduce yourself as the model or its vendor. "
+                "If asked about the underlying model, distinguish it honestly from ELARA.",
+                "Respond naturally to casual remarks; do not restart introductions each turn.",
+                self.purpose,
+                *self.principles,
+                self.style,
+            )
+        )
 
 
 def load_identity() -> IdentityPolicy:

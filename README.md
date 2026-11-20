@@ -28,6 +28,7 @@ and persist across both saved and temporary chats.
 
 Included:
 
+- Local browser UI with saved chats, memory editing, and selected text attachments.
 - Python 3.12 package and `elara` CLI entry point.
 - Validated TOML settings and a packaged, versioned identity constitution.
 - Typed agent contracts and a Pydantic AI mock adapter.
@@ -37,6 +38,44 @@ Included:
 - SQLite FTS5 preflight, synthetic sandbox, and starter evaluation scenarios.
 - SQLite migrations, atomic saved conversations, history replay, export/deletion,
   consistent backups, and append-only action audit records.
+
+## Open the UI
+
+Start Ollama, then run:
+
+```powershell
+.\scripts\ui.ps1
+```
+
+Open the complete `http://127.0.0.1:8765/#token=...` URL printed in the terminal.
+If Windows denies the port (WinError 10013), run `.\scripts\ui.ps1 --port 0`
+to select an available port automatically, then open the new printed URL.
+Keep the terminal running; Ctrl+C stops the server. If the port is occupied, use
+`.\scripts\ui.ps1 --port 8766`. This is a local browser interface, not a native
+desktop installer. It uses the same Ollama configuration, sessions, and memories
+as `scripts/chat.ps1`. No model download or frontend build is required; the launcher
+enables the existing `api` dependency extra.
+
+- New conversation starts a fresh chat; successful exchanges are saved automatically.
+- The sidebar shows the latest 100 conversations, including CLI chats. Select one to resume.
+- Memories opens a panel to add, edit, and forget facts. Use this panel instead of CLI slash commands.
+- Recall memories controls injection for each message; earlier chat history can still contain facts.
+- Attach text selects up to eight UTF-8 files, at most 16,000 characters total.
+  The browser sends selected contents, not filesystem access. Reselect to pick up
+  file edits. Attachments clear when changing conversations, are not separately
+  stored, and are not CLI filesystem-read audit events. Answers may quote them.
+- Delete chat removes that transcript, retaining memories, audit metadata, and backups.
+
+The UI binds only to `127.0.0.1`, checks Host/Origin, and requires a random launch
+token for every API request. The browser retains the token only for that tab's
+session; restarting the server requires the new launch URL. Static assets are
+packaged locally, with no CDN, analytics, or cloud calls. Text is rendered as plain
+text rather than executable HTML. This protects the local browser boundary, not
+against other software running as your OS user.
+
+The first UI waits for complete replies rather than streaming. Runtime/browser
+smoke testing remains pending on the unrestricted host; the current environment
+cannot run the required event loop or local HTTP listener.
 
 ## Windows setup
 
@@ -226,7 +265,7 @@ Python 3.12.16, the dependencies, and `uv.lock` are now available. An offline
 
 Local synchronous tests cover database operations, rollback, audit enforcement,
 redaction, provider configuration, metadata checks, and workspace boundaries:
-**124 tests passed, 1 skipped**. The host blocks real hardlink creation; simulated
+**139 tests passed, 1 skipped**. The host blocks real hardlink creation; simulated
 link-count rejection passed. Actual Windows junction coverage remains pending.
 Ruff, mypy, `elara doctor`, and
 wheel/source-distribution builds passed. The wheel includes its identity and SQL
@@ -236,9 +275,10 @@ The restricted execution session blocks the loopback
 socket pair that Windows asyncio needs to create an event loop. Async/runtime and
 chat tests therefore still require an unrestricted Windows host or Windows/Linux
 CI. Those tests remain enabled; this limitation is not hidden by skips in CI.
-The user confirmed both saved mock chat and a real `lfm3-omni:2b` attachment
-response in their own PowerShell. The Ollama API remains unreachable from this
-execution session. The new memory-to-model path still needs a live host check.
+The user confirmed saved mock chat, a real `lfm3-omni:2b` attachment response,
+memory recall, and memory deletion in their own PowerShell. The Ollama API remains
+unreachable from this execution session. Browser UI HTTP and inference flows need
+a live host check; async ASGI integration tests are included for CI.
 
 To reproduce the subset that does not require an event loop:
 

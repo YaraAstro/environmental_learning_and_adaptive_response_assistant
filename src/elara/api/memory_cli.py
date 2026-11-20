@@ -33,12 +33,15 @@ def interactive_command(message: str, path: Path) -> bool:
         print(
             "Memory: up to 20 facts, 500 characters each. Recall is local and shared across chats."
         )
-    elif command == "/memories":
+    elif command in {"/memories", "/memory"}:
         memory_command(path, "list")
     elif command == "/remember":
         key, separator, value = argument.partition("=")
         if not separator:
             raise ValueError("Use /remember key=value")
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+            value = value[1:-1]
         memory_command(path, "set", key.strip(), value)
     elif command == "/forget":
         if not argument.strip():

@@ -102,6 +102,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--config", type=Path, help="Path to a validated TOML configuration")
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("doctor", help="Check Python, SQLite FTS5, identity, and AI imports")
+    ui = commands.add_parser("ui", help="Start the local browser UI (requires the api extra)")
+    ui.add_argument("--port", type=int, default=8765, help="UI port; 0 selects an available port")
     workspace = commands.add_parser("workspace", help="Explicit read-only folder access")
     workspace.add_argument(
         "--root", type=Path, required=True, help="Folder authorized for this command"
@@ -156,6 +158,17 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         settings = load_settings(args.config)
+        if args.command == "ui":
+            if args.port != 0 and not 1024 <= args.port <= 65535:
+                raise InferenceError("Choose a UI port from 1024 to 65535, or 0 for automatic.")
+            try:
+                from elara.api.web import serve
+            except ImportError:
+                raise InferenceError(
+                    "Install the UI dependencies with uv sync --extra api."
+                ) from None
+            serve(settings, args.port)
+            return 0
         if args.command == "memory":
             from elara.api.memory_cli import memory_command
 

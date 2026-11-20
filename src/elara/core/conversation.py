@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-from elara.core.contracts import AgentRequest, AgentResponse, AgentRuntime
+from elara.core.contracts import AgentRequest, AgentResponse, AgentRuntime, AttachedDocument
 from elara.core.sessions import SessionRepository
 
 
@@ -11,9 +11,13 @@ class ConversationService:
         self._runtime = runtime
         self._sessions = sessions
 
-    async def respond(self, session_id: UUID, message: str) -> AgentResponse:
+    async def respond(
+        self, session_id: UUID, message: str, *, attachments: tuple[AttachedDocument, ...] = ()
+    ) -> AgentResponse:
         snapshot = self._sessions.snapshot(session_id)
-        request = AgentRequest(message=message, session_id=session_id, history=snapshot.turns)
+        request = AgentRequest(
+            message=message, session_id=session_id, history=snapshot.turns, attachments=attachments
+        )
         response = await self._runtime.respond(request)
         if response.session_id != session_id:
             raise ValueError("Runtime returned a response for a different session")
